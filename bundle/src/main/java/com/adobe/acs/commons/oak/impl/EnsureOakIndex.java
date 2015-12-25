@@ -21,20 +21,29 @@ package com.adobe.acs.commons.oak.impl;
 
 import com.adobe.acs.commons.analysis.jcrchecksum.ChecksumGenerator;
 import com.adobe.acs.commons.util.AemCapabilityHelper;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.felix.scr.annotations.Activate;
 import org.apache.felix.scr.annotations.Component;
+import org.apache.felix.scr.annotations.Deactivate;
 import org.apache.felix.scr.annotations.Properties;
 import org.apache.felix.scr.annotations.Property;
 import org.apache.felix.scr.annotations.Reference;
+import org.apache.sling.api.resource.LoginException;
+import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
 import org.apache.sling.commons.osgi.PropertiesUtil;
 import org.apache.sling.commons.scheduler.ScheduleOptions;
 import org.apache.sling.commons.scheduler.Scheduler;
+import org.osgi.service.component.ComponentContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.jcr.RepositoryException;
+import javax.jcr.Session;
+import javax.jcr.observation.Event;
+import javax.jcr.observation.ObservationManager;
+
 import java.util.Map;
 
 //@formatter:off
@@ -81,6 +90,10 @@ public class EnsureOakIndex {
             value = DEFAULT_OAK_INDEXES_PATH)
     public static final String PROP_OAK_INDEXES_PATH = "oak-indexes.path";
 
+    private ObservationManager observationManager;
+    
+    private EnsureOakIndexListener listener;
+    
     @Activate
     protected final void activate(Map<String, Object> config) throws RepositoryException {
         if (!capabilityHelper.isOak()) {
@@ -107,6 +120,21 @@ public class EnsureOakIndex {
         // Start the indexing process asynchronously, so the activate won't get blocked
         // by rebuilding a synchronous index
 
+        try {
+			ResourceResolver resolver = getServiceResourceResolver();
+			observationManager = resolver.adaptTo(Session.class).getWorkspace().getObservationManager();
+			listener = new EnsureOakIndexListener(this, oakIndexesPath, ensureDefinitionsPath);
+			listener.executeJob();
+			observationManager.addEventListener(listener, 
+					Event.NODE_ADDED | Event.NODE_REMOVED | Event.PROPERTY_CHANGED, 
+					ensureDefinitionsPath, true, null, null, true);
+			resolver.close();
+		} catch (LoginException e) {
+			log.error("Unable to start observing changes to Ensure definitions.", e);
+		}
+        
+        /**
+         * 
         EnsureOakIndexJobHandler jobHandler =
                 new EnsureOakIndexJobHandler(this, oakIndexesPath, ensureDefinitionsPath);
         ScheduleOptions options = scheduler.NOW();
@@ -116,6 +144,20 @@ public class EnsureOakIndex {
         scheduler.schedule(jobHandler, options);
 
         log.info("Job scheduled for ensuring Oak Indexes [ {} ~> {} ]", ensureDefinitionsPath, oakIndexesPath);
+        *
+        */
+    }
+    
+    @Deactivate
+    protected void deactivate() throws RepositoryException {
+        if(observationManager != null) {
+        	log.info("Removing JCR listener.");
+            observationManager.removeEventListener(listener);
+        }
+    }
+    
+    final ResourceResolver getServiceResourceResolver() throws LoginException {
+    	return getResourceResolverFactory().getServiceResourceResolver(null);
     }
 
     final ChecksumGenerator getChecksumGenerator() {
@@ -124,6 +166,10 @@ public class EnsureOakIndex {
 
     final ResourceResolverFactory getResourceResolverFactory() {
         return resourceResolverFactory;
+    }
+    
+    final Scheduler getScheduler() {
+    	return scheduler;
     }
 
     static class OakIndexDefinitionException extends Exception {
