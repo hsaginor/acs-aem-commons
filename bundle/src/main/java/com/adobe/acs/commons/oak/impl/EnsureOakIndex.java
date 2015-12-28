@@ -117,21 +117,30 @@ public class EnsureOakIndex {
                     + PROP_OAK_INDEXES_PATH + "` " + "cannot be blank.");
         }
 
-        // Start the indexing process asynchronously, so the activate won't get blocked
-        // by rebuilding a synchronous index
-
+        ResourceResolver resolver = null;
         try {
-			ResourceResolver resolver = getServiceResourceResolver();
+			resolver = getServiceResourceResolver();
 			observationManager = resolver.adaptTo(Session.class).getWorkspace().getObservationManager();
 			listener = new EnsureOakIndexListener(this, oakIndexesPath, ensureDefinitionsPath);
-			listener.executeJob();
+			// listener.executeJob();
+			
+			String nodeTypes[] = { EnsureOakIndexJobHandler.NT_OAK_UNSTRUCTURED };
+			// TODO Do we care about Event.NODE_REMOVED events?
+			// Current implementation of EnsureOakIndexJobHandler does not handle deleted ensure definitions.  
 			observationManager.addEventListener(listener, 
-					Event.NODE_ADDED | Event.NODE_REMOVED | Event.PROPERTY_CHANGED, 
-					ensureDefinitionsPath, true, null, null, true);
-			resolver.close();
-		} catch (LoginException e) {
+					Event.NODE_ADDED | Event.PROPERTY_CHANGED, 
+					ensureDefinitionsPath, true, null, nodeTypes, true);
+		
+        } catch (LoginException e) {
 			log.error("Unable to start observing changes to Ensure definitions.", e);
+		} finally {
+			if(resolver != null) {
+				resolver.close();
+			}
 		}
+        
+        // Start the indexing process asynchronously, so the activate won't get blocked
+        // by rebuilding a synchronous index
         
         /**
          * 
