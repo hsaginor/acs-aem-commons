@@ -90,6 +90,8 @@ public class EnsureOakIndex {
             value = DEFAULT_OAK_INDEXES_PATH)
     public static final String PROP_OAK_INDEXES_PATH = "oak-indexes.path";
 
+    private ResourceResolver observationResolver;
+    
     private ObservationManager observationManager;
     
     private EnsureOakIndexListener listener;
@@ -117,44 +119,20 @@ public class EnsureOakIndex {
                     + PROP_OAK_INDEXES_PATH + "` " + "cannot be blank.");
         }
 
-        ResourceResolver resolver = null;
         try {
-			resolver = getServiceResourceResolver();
-			observationManager = resolver.adaptTo(Session.class).getWorkspace().getObservationManager();
+        	observationResolver = getServiceResourceResolver();
+			observationManager = observationResolver.adaptTo(Session.class).getWorkspace().getObservationManager();
 			listener = new EnsureOakIndexListener(this, oakIndexesPath, ensureDefinitionsPath);
-			// listener.executeJob();
-			
-			String nodeTypes[] = { EnsureOakIndexJobHandler.NT_OAK_UNSTRUCTURED };
-			// TODO Do we care about Event.NODE_REMOVED events?
-			// Current implementation of EnsureOakIndexJobHandler does not handle deleted ensure definitions.  
+			 
 			observationManager.addEventListener(listener, 
-					Event.NODE_ADDED | Event.PROPERTY_CHANGED, 
-					ensureDefinitionsPath, true, null, nodeTypes, true);
+					Event.NODE_ADDED | Event.NODE_REMOVED | Event.NODE_MOVED | Event.PROPERTY_ADDED | Event.PROPERTY_CHANGED | Event.PROPERTY_REMOVED, 
+					ensureDefinitionsPath, true, null, null, true);
 		
+			log.info("Registred change listener for {}", ensureDefinitionsPath);
         } catch (LoginException e) {
 			log.error("Unable to start observing changes to Ensure definitions.", e);
-		} finally {
-			if(resolver != null) {
-				resolver.close();
-			}
-		}
+		} 
         
-        // Start the indexing process asynchronously, so the activate won't get blocked
-        // by rebuilding a synchronous index
-        
-        /**
-         * 
-        EnsureOakIndexJobHandler jobHandler =
-                new EnsureOakIndexJobHandler(this, oakIndexesPath, ensureDefinitionsPath);
-        ScheduleOptions options = scheduler.NOW();
-        String name = String.format("Ensure index %s => %s", new Object[]{ oakIndexesPath, ensureDefinitionsPath });
-        options.name(name);
-        options.canRunConcurrently(false);
-        scheduler.schedule(jobHandler, options);
-
-        log.info("Job scheduled for ensuring Oak Indexes [ {} ~> {} ]", ensureDefinitionsPath, oakIndexesPath);
-        *
-        */
     }
     
     @Deactivate
@@ -163,10 +141,14 @@ public class EnsureOakIndex {
         	log.info("Removing JCR listener.");
             observationManager.removeEventListener(listener);
         }
+        if(observationResolver!=null) {
+        	observationResolver.close();
+        }
     }
     
     final ResourceResolver getServiceResourceResolver() throws LoginException {
-    	return getResourceResolverFactory().getServiceResourceResolver(null);
+    	return getResourceResolverFactory().getAdministrativeResourceResolver(null);
+    	//return getResourceResolverFactory().getServiceResourceResolver(null);
     }
 
     final ChecksumGenerator getChecksumGenerator() {
