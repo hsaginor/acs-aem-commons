@@ -5,6 +5,7 @@ import com.adobe.acs.commons.analysis.jcrchecksum.impl.options.CustomChecksumGen
 import com.adobe.acs.commons.oak.impl.EnsureOakIndex.OakIndexDefinitionException;
 import com.day.cq.commons.jcr.JcrConstants;
 import com.day.cq.commons.jcr.JcrUtil;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ModifiableValueMap;
@@ -12,12 +13,16 @@ import org.apache.sling.api.resource.PersistenceException;
 import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ValueMap;
+import org.apache.sling.commons.scheduler.ScheduleOptions;
+import org.apache.sling.commons.scheduler.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nonnull;
 import javax.jcr.Node;
 import javax.jcr.RepositoryException;
 import javax.jcr.Session;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -79,6 +84,19 @@ class EnsureOakIndexJobHandler implements Runnable {
         this.oakIndexesPath = oakIndexPath;
         this.ensureDefinitionsPath = ensureDefinitionsPath;
     }
+    
+    public static final void executeJob(@Nonnull EnsureOakIndex ensureIndex, @Nonnull String oakIndexPath, @Nonnull String ensureDefinitionsPath) {
+		Scheduler scheduler = ensureIndex.getScheduler();
+		EnsureOakIndexJobHandler jobHandler =
+                new EnsureOakIndexJobHandler(ensureIndex, oakIndexPath, ensureDefinitionsPath);
+        ScheduleOptions options = scheduler.NOW();
+        String name = String.format("Ensure index %s => %s", new Object[]{ oakIndexPath, ensureDefinitionsPath });
+        options.name(name);
+        options.canRunConcurrently(false);
+        scheduler.schedule(jobHandler, options);
+
+        log.info("Job scheduled for ensuring Oak Indexes [ {} ~> {} ]", ensureDefinitionsPath, oakIndexPath);
+	}
 
     @Override
     public void run() {

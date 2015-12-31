@@ -39,17 +39,7 @@ public class EnsureOakIndexListener implements EventListener {
 	void executeJob() {
 		// Currently EnsureOakIndexJobHandler is implemented to process entire Ensure definitions tree.
 		// Might be able to optimize this by implementing a job that will process specific changes only. 
-		
-		Scheduler scheduler = ensureIndex.getScheduler();
-		EnsureOakIndexJobHandler jobHandler =
-                new EnsureOakIndexJobHandler(ensureIndex, oakIndexPath, ensureDefinitionsPath);
-        ScheduleOptions options = scheduler.NOW();
-        String name = String.format("Ensure index %s => %s", new Object[]{ oakIndexPath, ensureDefinitionsPath });
-        options.name(name);
-        options.canRunConcurrently(false);
-        scheduler.schedule(jobHandler, options);
-
-        log.info("Job scheduled for ensuring Oak Indexes [ {} ~> {} ]", ensureDefinitionsPath, oakIndexPath);
+		EnsureOakIndexJobHandler.executeJob(ensureIndex, oakIndexPath, ensureDefinitionsPath);
 	}
 	
 	private void logEvents(EventIterator events) {

@@ -90,6 +90,20 @@ public class EnsureOakIndex {
             value = DEFAULT_OAK_INDEXES_PATH)
     public static final String PROP_OAK_INDEXES_PATH = "oak-indexes.path";
 
+    private final static boolean DEFAULT_UPDATE_AUTO = false;
+    
+    @Property(label = "Auto Update",
+    		description="Automatically update OAK indexes when ensure definitions change.",
+    		boolValue=DEFAULT_UPDATE_AUTO)
+    public final static String PROP_UPDATE_AUTO = "ensure-definitions.updateAuto";
+    
+    private final static boolean DEFAULT_UPDATE_ONACTIVATE = true;
+    
+    @Property(label = "Auto On Activate",
+    		description="Update OAK indexes when this component is activated.",
+    		boolValue=DEFAULT_UPDATE_ONACTIVATE)
+    public final static String PROP_UPDATE_ONACTIVATE = "ensure-definitions.updateOnActivate"; 
+    
     private ResourceResolver observationResolver;
     
     private ObservationManager observationManager;
@@ -118,21 +132,18 @@ public class EnsureOakIndex {
             throw new IllegalArgumentException("OSGi Configuration Property `"
                     + PROP_OAK_INDEXES_PATH + "` " + "cannot be blank.");
         }
-
-        try {
-        	observationResolver = getServiceResourceResolver();
-			observationManager = observationResolver.adaptTo(Session.class).getWorkspace().getObservationManager();
-			listener = new EnsureOakIndexListener(this, oakIndexesPath, ensureDefinitionsPath);
-			 
-			observationManager.addEventListener(listener, 
-					Event.NODE_ADDED | Event.NODE_REMOVED | Event.NODE_MOVED | Event.PROPERTY_ADDED | Event.PROPERTY_CHANGED | Event.PROPERTY_REMOVED, 
-					ensureDefinitionsPath, true, null, null, true);
-		
-			log.info("Registred change listener for {}", ensureDefinitionsPath);
-        } catch (LoginException e) {
-			log.error("Unable to start observing changes to Ensure definitions.", e);
-		} 
         
+        final boolean autoUpdate = PropertiesUtil.toBoolean(PROP_UPDATE_AUTO, DEFAULT_UPDATE_AUTO);
+        
+        final boolean updateOnActivate = PropertiesUtil.toBoolean(PROP_UPDATE_ONACTIVATE, DEFAULT_UPDATE_ONACTIVATE);
+
+        if(autoUpdate) {
+        	startListener(oakIndexesPath, ensureDefinitionsPath);
+        }
+         
+        if(updateOnActivate) {
+        	EnsureOakIndexJobHandler.executeJob(this, oakIndexesPath, ensureDefinitionsPath);
+        }
     }
     
     @Deactivate
@@ -167,5 +178,21 @@ public class EnsureOakIndex {
         OakIndexDefinitionException(String message) {
             super(message);
         }
+    }
+    
+    private void startListener(String oakIndexesPath, String ensureDefinitionsPath) throws RepositoryException {
+    	try {
+        	observationResolver = getServiceResourceResolver();
+			observationManager = observationResolver.adaptTo(Session.class).getWorkspace().getObservationManager();
+			listener = new EnsureOakIndexListener(this, oakIndexesPath, ensureDefinitionsPath);
+			 
+			observationManager.addEventListener(listener, 
+					Event.NODE_ADDED | Event.NODE_REMOVED | Event.NODE_MOVED | Event.PROPERTY_ADDED | Event.PROPERTY_CHANGED | Event.PROPERTY_REMOVED, 
+					ensureDefinitionsPath, true, null, null, true);
+		
+			log.info("Registred change listener for {}", ensureDefinitionsPath);
+        } catch (LoginException e) {
+			log.error("Unable to start observing changes to Ensure definitions.", e);
+		} 
     }
 }
